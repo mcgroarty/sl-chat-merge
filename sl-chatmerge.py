@@ -305,12 +305,13 @@ def sort_chat_log(content: str, file_path: str) -> str:
             normalized_entries.append(entry)
     
     # Step 4: Sort by timestamp, then by full entry content for stability
-    # Use byte-wise comparison by encoding to bytes
+    # Use UTF-8 encoding to properly handle Unicode characters
     # Timestamps are now normalized, so all have consistent format
     def sort_key(entry: str) -> bytes:
         # Sort by full entry to ensure stable, deterministic ordering
         # This ensures identical entries sort together for deduplication
-        return entry.encode('latin-1', errors='replace')
+        # Use UTF-8 to preserve Unicode characters that may appear at end of entries
+        return entry.encode('utf-8')
     
     sorted_entries = sorted(normalized_entries, key=sort_key)
     
@@ -550,10 +551,25 @@ Configuration:
         log_info("No chat log files found to process")
         return
     
-    # Process each file
-    log_info(f"Processing {len(all_files)} files...")
+    # Group files by user directory for progress reporting
+    from collections import defaultdict
+    files_by_user: defaultdict = defaultdict(list)
     for relative_path in sorted(all_files):
-        merge_and_sync_file(relative_path, existing_dirs)
+        # Extract user directory (first component of path)
+        parts = relative_path.split('/')
+        if parts:
+            user_dir = parts[0]
+            files_by_user[user_dir].append(relative_path)
+    
+    # Process each file, grouped by user directory
+    log_info(f"Processing {len(all_files)} files across {len(files_by_user)} user directories...")
+    
+    for user_dir in sorted(files_by_user.keys()):
+        user_files = files_by_user[user_dir]
+        log_info(f"  {user_dir}: {len(user_files)} file(s)")
+        
+        for relative_path in user_files:
+            merge_and_sync_file(relative_path, existing_dirs)
     
     if DRY_RUN:
         log_info("=== DRY RUN COMPLETE - No actual changes were made ===")
