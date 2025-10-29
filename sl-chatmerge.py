@@ -26,8 +26,10 @@ DIRECTORIES = [
 
 # System files to exclude (matched at end of path)
 EXCLUDED_FILES = [
+    "avatar_icons_cache.txt",
     "cef_log.txt",
     "plugin_cookies.txt",
+    "render_mute_settings.txt"
     "search_history.txt",
     "teleport_history.txt",
     "typed_locations.txt",
@@ -146,9 +148,10 @@ def should_exclude_file(relative_path: str) -> bool:
     if "conflicted copy" in relative_path.lower():
         return True
     
-    # Exclude specific system files (matched at end of path)
+    # Exclude specific system files (matched at end of path, case-insensitive)
+    relative_path_lower = relative_path.lower()
     for excluded in EXCLUDED_FILES:
-        if relative_path.endswith("/" + excluded):
+        if relative_path_lower.endswith("/" + excluded.lower()):
             return True
     
     return False
@@ -184,8 +187,9 @@ def discover_files(directories: List[Tuple[Path, str]], filters: List[str]) -> S
                 relative = txt_file.relative_to(dir_path)
                 relative_str = str(relative).replace(os.sep, "/")  # Ensure forward slashes
                 
-                # Exclude files in excluded directories
-                if any(relative_str.startswith(excluded_dir) for excluded_dir in EXCLUDED_DIRECTORIES):
+                # Exclude files in excluded directories (case-insensitive)
+                relative_str_lower = relative_str.lower()
+                if any(relative_str_lower.startswith(excluded_dir.lower()) for excluded_dir in EXCLUDED_DIRECTORIES):
                     log_verbose(f"Excluding (in excluded directory): {relative_str}")
                     continue
                 
@@ -370,8 +374,9 @@ def merge_and_sync_file(
     """
     log_verbose(f"Processing: {relative_path}")
     
-    # Step -1: Skip excluded directories
-    if any(relative_path.startswith(excluded_dir) for excluded_dir in EXCLUDED_DIRECTORIES):
+    # Step -1: Skip excluded directories (case-insensitive)
+    relative_path_lower = relative_path.lower()
+    if any(relative_path_lower.startswith(excluded_dir.lower()) for excluded_dir in EXCLUDED_DIRECTORIES):
         log_verbose(f"  Skipping excluded directory: {relative_path}")
         return
     
