@@ -2,6 +2,14 @@
 
 Synchronize and merge Second Life chat logs across multiple workstations and viewers.
 
+## ⚠️ Important Notice
+
+This program is provided **as-is** and is intended for Second Life users, but is **not offered by Linden Lab**.
+
+**Before using this tool, you are strongly encouraged to make backups of your viewer logs.** While this tool has been designed with safety in mind, you should always have backups of important data.
+
+If you encounter any issues or have questions, please file them at: <https://github.com/mcgroarty/sl-chat-merge/issues>
+
 ## Overview
 
 This tool maintains complete, chronologically-sorted conversation history when using Second Life on different computers or switching between viewers (Firestorm, Kokua, official client). It reads chat logs from all configured locations, merges them by timestamp, and writes the unified result back to all writable directories.
