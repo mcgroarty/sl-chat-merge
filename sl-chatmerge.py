@@ -15,11 +15,13 @@ from typing import Dict, List, Set, Tuple, Optional
 
 # Configuration: Directory paths and access modes
 DIRECTORIES = [
-    {"path": "~/Library/Application Support/Firestorm/", "mode": "r"},
-    {"path": "~/Library/Application Support/SecondLife/", "mode": "r"},
-    {"path": "~/Mega/Apps/SL-Logs-and-Settings/SL-Chat/", "mode": "r"},
-    {"path": "~/Temp/DoesNotExist/", "mode": "rw"},
-    {"path": "~/Temp/TestMerge/", "mode": "rw"},
+    {"path": "~/AppData/Roaming/Firestorm_x64/", "mode": "rw"},
+    {"path": "~/AppData/Roaming/Kokua/", "mode": "rw"},
+    {"path": "~/AppData/Roaming/SecondLife/", "mode": "rw"},
+    {"path": "~/Library/Application Support/Firestorm/", "mode": "rw"},
+    {"path": "~/Library/Application Support/Kokua/", "mode": "rw"},
+    {"path": "~/Library/Application Support/SecondLife/", "mode": "rw"},
+    {"path": "~/Mega/Apps/SL-Logs-and-Settings/SL-Chat/", "mode": "rw"},
 ]
 
 # System files to exclude (matched at end of path)
