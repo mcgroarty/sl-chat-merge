@@ -58,11 +58,16 @@ The tool supports the following command-line options:
   - Comparison results
   - Processing details
   - Sync operations performed
+  - Optimization decisions (files skipped due to identical size or content)
 - **`--dry-run`** or **`-n`**: Simulation mode that:
   - Shows what files would be written or updated
   - Shows what directories would be created
   - Never actually writes files or creates directories
   - Useful for previewing sync operations before executing them
+- **`--force`** or **`-f`**: Disables the file size optimization:
+  - Normally, if all versions of a file have identical size, processing is skipped (assumes files are already synced)
+  - With `--force`, all files are processed regardless of size comparison
+  - Useful when files may have same size but different content
 
 Additional filtering can be provided as positional arguments to process only files matching specific patterns (case-insensitive substring match on file paths).
 
@@ -83,9 +88,12 @@ Additional filtering can be provided as positional arguments to process only fil
 
 For each unique chat log file across all configured directories:
 
-1. **Validation**: Checks that all directories contain a `/logs` subdirectory. Skips directories that don't exist or lack this subdirectory
+1. **Validation**: Checks that all directories contain a `/logs` subdirectory. The `/logs` subdirectory is a debugging log directory present in all Second Life viewer installations - its presence is used to validate that the configured path is actually a Second Life directory. Skips directories that don't exist or lack this subdirectory.
 
-2. **Discovery**: Recursively scans all existing directories with `r` or `rw` access for `.txt` files
+2. **Discovery**: Recursively scans user-specific subdirectories for `.txt` chat log files
+   - Chat logs are stored in user subdirectories like `~/Firestorm/UserName/*.txt` (not in the `/logs` directory)
+   - The `/logs` directory itself is excluded from scanning (it contains debugging logs, not chat logs)
+   - Scans all `*/*.txt` files in the base directory (e.g., `~/Firestorm/*/` subdirectories)
    - File extension matching is case-insensitive (matches `.txt`, `.TXT`, `.Txt`, etc.)
    - Builds a union of all unique file paths found across all readable directories
    - Once discovered, file paths are used exactly as found on the file system
@@ -112,7 +120,9 @@ For each unique chat log file across all configured directories:
    - **Malformed Timestamp Handling**: If any file contains lines with malformed timestamps, stops immediately with a verbose error message and makes no changes (may indicate a new system file needing exclusion)
    - For each existing directory with `w` or `rw` access:
      - If file doesn't exist: writes the merged file (or reports in dry-run mode)
-     - If file exists (including empty files): compares with merged result
+     - If file exists (including empty files): compares byte-for-byte with merged result
+       - **Only writes if content differs** - avoids unnecessary disk writes and cloud sync activity
+       - Skips write if content is identical (reports in verbose mode)
        - Updates only if merged result differs (or reports in dry-run mode)
        - Reports "Updating [filename]..." when changes are made (or "Would update [filename]..." in dry-run mode)
        - Reports "Adding [filename]..." when creating new files (or "Would add [filename]..." in dry-run mode)
@@ -130,9 +140,20 @@ Processes chat log entries:
    - Lines starting with `[YYYY/MM/DD` (timestamp pattern) begin new entries
    - Lines NOT starting with timestamp are joined to the previous line
    - First line in file doesn't get a leading newline
-3. **Timestamp Validation**: Checks that all lines starting with `[` have valid timestamps
+3. **Timestamp Validation and Normalization**:
+   - Accepts `[YYYY/MM/DD HH:MM:SS]` (20 chars) and `[YYYY/MM/DD HH:MM]` (17-19 chars) formats
+   - Accepts 12-hour format with AM/PM: `[YYYY/MM/DD HH:MM AM]` or `[YYYY/MM/DD HH:MM PM]`
+   - Hours and minutes can be 1-2 digits on input
+   - Single-digit hours and minutes are normalized to 2-digit format with leading zeros
+   - 12-hour timestamps (AM/PM) are converted to 24-hour format
+   - Example: `[2008/04/07 8:24]` → `[2008/04/07 08:24]`
+   - Example: `[2024/10/31 10:30 AM]` → `[2024/10/31 10:30]`
+   - Example: `[2024/10/31 2:30 PM]` → `[2024/10/31 14:30]`
+   - This normalization ensures correct chronological sorting
    - If malformed timestamps are detected, raises an error and stops processing
-4. **Chronological Sorting**: Sorts entries by the timestamp field (characters 1-21: `[YYYY/MM/DD HH:MM:SS]` plus space)
+4. **Chronological Sorting**: Sorts entries by the normalized timestamp field
+   - Uses up to 21 characters (timestamp plus trailing space)
+   - All timestamps are normalized to consistent format before sorting
 5. **Deduplication**: Removes consecutive duplicate lines (like Unix `uniq`)
    - Only removes duplicates that appear immediately after each other in the sorted output
    - Does not remove duplicates that appear elsewhere in the file
@@ -145,11 +166,22 @@ Second Life chat logs use the format:
 
 ```text
 [YYYY/MM/DD HH:MM:SS] Username: message text
+[YYYY/MM/DD HH:MM] System message (seconds optional)
+[YYYY/MM/DD H:MM] System message (hours can be 1-2 digits)
+[YYYY/MM/DD HH:MM AM] System message (12-hour format with AM/PM)
 ```
 
 Multi-line messages continue on subsequent lines without timestamps. The sort function intelligently handles these multi-line entries as atomic units.
 
-**Important**: The timestamp format is exactly 20 characters: `[YYYY/MM/DD HH:MM:SS]` including the brackets. Sorting is performed on characters 1-21 of each line (timestamp plus the space after).
+**Important**: The timestamp format supports multiple variants:
+
+- Standard format: 20 characters `[YYYY/MM/DD HH:MM:SS]` including the brackets (user chat messages)
+- Short format: 17-19 characters `[YYYY/MM/DD HH:MM]` including the brackets (system messages)
+- 12-hour format: 20-22 characters `[YYYY/MM/DD HH:MM AM]` or `[YYYY/MM/DD HH:MM PM]` (system messages)
+- Hours and minutes can be 1-2 digits (e.g., `[2008/04/07 8:24]` or `[2008/04/07 08:24]`)
+- 12-hour timestamps are converted to 24-hour format during processing
+
+Sorting is performed on the timestamp portion of each line (up to 21 characters including the trailing space). Lines with shorter timestamps are padded during sorting to ensure correct chronological ordering.
 
 **Line Endings**: All output files use Unix-style line endings (LF only, `\n`). Files with Windows line endings (CRLF, `\r\n`) are automatically converted during processing.
 
@@ -178,6 +210,19 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 - **Case Sensitivity**: Uses case-insensitive matching for `.txt` files and pattern filters
 - **Symbolic Links**: Follows symbolic links during directory traversal
 
+### Performance Optimizations
+
+- **File Size Optimization**: Before processing a file:
+  - Checks the size of all readable versions of the file
+  - If all versions have identical size, assumes they are already synced and skips merge operation
+  - This optimization can be disabled with the `--force` flag
+  - Significantly reduces processing time when most files are already synced
+- **Content Comparison**: Before writing a file:
+  - Performs byte-for-byte comparison between merged result and existing file content
+  - Only writes to disk if content has actually changed
+  - Reduces disk writes and cloud sync activity
+- **In-Memory Processing**: All operations performed in memory without temporary files
+
 ### Safety and Validation
 
 - **Directory Validation**: Requires `/logs` subdirectory in directories before processing (prevents accidental sync of wrong directories)
@@ -203,7 +248,7 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 - **Type Safety**: Full type hints for all functions, parameters, and return values
 - **Testing Framework**: pytest for all unit and integration tests
 - **Test Organization**: Tests located in a `tests/` directory
-- **Command-Line Interface**: Argument parsing for `--help`, `--verbose`/`-v`, and `--dry-run`/`-n` options
+- **Command-Line Interface**: Argument parsing for `--help`, `--verbose`/`-v`, `--dry-run`/`-n`, and `--force`/`-f` options
 - **Configuration**: Directory configuration defined as a constant (`DIRECTORIES`) in the main Python file
 - **Path Expansion**: Implements `~` expansion for home directory on all platforms (Windows, macOS, Linux)
 - **Path Separators**: Uses forward slash (`/`) as directory separator on all platforms, including Windows
