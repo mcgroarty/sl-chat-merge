@@ -370,6 +370,11 @@ def merge_and_sync_file(
     """
     log_verbose(f"Processing: {relative_path}")
     
+    # Step -1: Skip excluded directories
+    if any(relative_path.startswith(excluded_dir) for excluded_dir in EXCLUDED_DIRECTORIES):
+        log_verbose(f"  Skipping excluded directory: {relative_path}")
+        return
+    
     # Step 0: Quick optimization - check if all versions have identical file sizes across ALL directories
     # If so, they're likely identical and we can skip processing (unless --force is used)
     # This check includes both readable AND writable directories to ensure we don't skip writing missing files
