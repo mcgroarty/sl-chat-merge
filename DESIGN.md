@@ -78,6 +78,11 @@ Additional filtering can be provided as positional arguments to process only fil
 - Loads and validates the directory configuration constant
 - Checks that all directory entries have a valid access mode (`r`, `w`, or `rw`)
 - Validates which configured directories actually exist on the file system
+- **Duplicate Directory Detection**: Resolves all paths to their canonical form (follows symlinks) and:
+  - Skips duplicate directory entries that have the same access mode
+  - Aborts with error if the same physical directory is configured with different modes
+  - Prevents data corruption from accidentally processing the same directory multiple times
+  - Logs skipped duplicates in verbose mode
 - For each unique chat log file found across all directories:
   1. Reads the file from all existing directories with `r` or `rw` access
   2. Merges all versions in memory using the sort function
@@ -92,17 +97,21 @@ For each unique chat log file across all configured directories:
 
 2. **Discovery**: Recursively scans user-specific subdirectories for `.txt` chat log files
    - Chat logs are stored in user subdirectories like `~/Firestorm/UserName/*.txt` (not in the `/logs` directory)
-   - The `/logs` directory itself is excluded from scanning (it contains debugging logs, not chat logs)
+   - **Excluded Directories**: The following directories are excluded from scanning (case-insensitive):
+     - `logs/` - contains debugging logs, not chat logs
+     - `user_settings/` - contains viewer configuration files
    - Scans all `*/*.txt` files in the base directory (e.g., `~/Firestorm/*/` subdirectories)
    - File extension matching is case-insensitive (matches `.txt`, `.TXT`, `.Txt`, etc.)
    - Builds a union of all unique file paths found across all readable directories
    - Once discovered, file paths are used exactly as found on the file system
 
-3. **Filtering**: Excludes system files and conflicts:
+3. **Filtering**: Excludes system files and conflicts (all matching is case-insensitive):
    - Any file path containing "conflicted copy" (case-insensitive)
-   - Specific system files matched at end of path:
+   - Specific system files matched at end of path (case-insensitive):
+     - `avatar_icons_cache.txt`
      - `cef_log.txt` (Chromium Embedded Framework log)
      - `plugin_cookies.txt`
+     - `render_mute_settings.txt`
      - `search_history.txt`
      - `teleport_history.txt`
      - `typed_locations.txt`
@@ -113,6 +122,9 @@ For each unique chat log file across all configured directories:
    - In dry-run mode, reports directories that would be created without actually creating them
 
 5. **File Processing**: For each unique chat log file:
+   - **Excluded Directory Check**: Skips files in excluded directories (case-insensitive):
+     - Files in `logs/` directory (or `Logs/`, `LOGS/`, etc.)
+     - Files in `user_settings/` directory (or `User_Settings/`, `USER_SETTINGS/`, etc.)
    - Reads all versions of the file from directories where it exists (only from `r` or `rw` directories)
    - Empty files are treated as having no chat content to merge
    - Concatenates all versions in memory (in order of directory configuration)
@@ -226,8 +238,14 @@ Sorting is performed on the timestamp portion of each line (up to 21 characters 
 ### Safety and Validation
 
 - **Directory Validation**: Requires `/logs` subdirectory in directories before processing (prevents accidental sync of wrong directories)
+- **Duplicate Directory Detection**: Uses path resolution to detect duplicate directories:
+  - Resolves all paths to canonical form (follows symlinks)
+  - Skips duplicate entries with same mode
+  - Aborts if same physical directory has conflicting modes (r vs rw, etc.)
 - **Existence Check**: Only processes directories that actually exist on the file system
 - **Read-Only Protection**: Directories with `r` access mode are never modified - no files written, no directories created
+- **Excluded Directories**: Automatically skips files in `logs/` and `user_settings/` directories (case-insensitive)
+- **Excluded Files**: Automatically skips system files and conflicted copies (case-insensitive matching)
 - **Malformed Timestamp Detection**: Stops immediately with verbose error if malformed timestamps are detected (may indicate new system files)
 - **Dry-Run Mode**: When enabled, performs all analysis and reports actions without making any file system modifications
 - **Change Detection**: Checks if files differ before writing
@@ -255,9 +273,11 @@ Sorting is performed on the timestamp portion of each line (up to 21 characters 
 - **Test Coverage**: Comprehensive test coverage for:
   - Sort function (line endings, multi-line entries, timestamp parsing, timestamp validation, consecutive deduplication)
   - Merge function (file discovery, filtering, directory creation, file comparison, multi-source merging, empty files)
-  - Main entry point (directory existence checking, read-all-then-write-all logic, dry-run mode, verbose output)
+  - Main entry point (directory existence checking, read-all-then-write-all logic, dry-run mode, verbose output, duplicate directory detection)
   - Edge cases (empty files, malformed timestamps, missing directories, special characters, non-existent directories, paths with spaces)
   - Command-line option handling
   - Line ending conversion (CRLF to LF)
   - Path handling (tilde expansion, forward slash separators on all platforms)
+  - Exclusion logic (excluded files and directories, case-insensitive matching)
+  - Duplicate directory handling (symlink detection, mode conflict detection)
 

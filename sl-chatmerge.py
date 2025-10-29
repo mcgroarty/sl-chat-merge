@@ -15,13 +15,17 @@ from typing import Dict, List, Set, Tuple, Optional
 
 # Configuration: Directory paths and access modes
 DIRECTORIES = [
-    {"path": "~/AppData/Roaming/Firestorm_x64/", "mode": "rw"},
-    {"path": "~/AppData/Roaming/Kokua/", "mode": "rw"},
-    {"path": "~/AppData/Roaming/SecondLife/", "mode": "rw"},
     {"path": "~/Library/Application Support/Firestorm/", "mode": "rw"},
     {"path": "~/Library/Application Support/Kokua/", "mode": "rw"},
     {"path": "~/Library/Application Support/SecondLife/", "mode": "rw"},
     {"path": "~/Mega/Apps/SL-Logs-and-Settings/SL-Chat/", "mode": "rw"},
+    {"path": "~/AppData/Roaming/Firestorm_x64/", "mode": "rw"},
+    {"path": "~/AppData/Roaming/Kokua/", "mode": "rw"},
+    {"path": "~/AppData/Roaming/SecondLife/", "mode": "rw"},
+    {"path": "~/home/AppData/Roaming/Firestorm_x64/", "mode": "rw"},
+    {"path": "~/home/AppData/Roaming/Kokua/", "mode": "rw"},
+    {"path": "~/home/AppData/Roaming/SecondLife/", "mode": "rw"},
+    {"path": "~/home/Mega/Apps/SL-Logs-and-Settings/SL-Chat/", "mode": "rw"},
 ]
 
 # System files to exclude (matched at end of path)
@@ -132,6 +136,55 @@ def check_directory_exists(dir_config: Dict[str, str]) -> Tuple[bool, Optional[P
     
     log_verbose(f"Directory validated: {path}")
     return True, path
+
+
+def check_for_duplicate_directories(directories: List[Tuple[Path, str]]) -> List[Tuple[Path, str]]:
+    """
+    Check if any directories resolve to the same physical location.
+    This handles symlinks and other path equivalences.
+    
+    Skips duplicate directory entries unless they have different modes,
+    in which case it's a configuration error.
+    
+    Args:
+        directories: List of (path, mode) tuples
+        
+    Returns:
+        Deduplicated list of (path, mode) tuples
+        
+    Raises:
+        SystemExit: If duplicate directories with different modes are found
+    """
+    seen_paths: Dict[Path, Tuple[Path, str]] = {}  # Maps resolved path -> (original path, mode)
+    unique_dirs: List[Tuple[Path, str]] = []
+    
+    for dir_path, mode in directories:
+        # Resolve to absolute, canonical path (follows symlinks)
+        try:
+            resolved = dir_path.resolve()
+        except (OSError, RuntimeError) as e:
+            log_error(f"Failed to resolve path {dir_path}: {e}")
+            sys.exit(1)
+        
+        if resolved in seen_paths:
+            original_path, original_mode = seen_paths[resolved]
+            
+            # Check if modes conflict
+            if mode != original_mode:
+                log_error(f"Duplicate directory with conflicting modes:")
+                log_error(f"  Path 1: {original_path} (mode: {original_mode})")
+                log_error(f"  Path 2: {dir_path} (mode: {mode})")
+                log_error(f"  Both resolve to: {resolved}")
+                log_error(f"Please use the same mode or remove one from DIRECTORIES configuration.")
+                sys.exit(1)
+            
+            # Same directory, same mode - just skip it
+            log_verbose(f"Skipping duplicate directory: {dir_path} (already using {original_path})")
+        else:
+            seen_paths[resolved] = (dir_path, mode)
+            unique_dirs.append((dir_path, mode))
+    
+    return unique_dirs
 
 
 def should_exclude_file(relative_path: str) -> bool:
@@ -549,6 +602,9 @@ Configuration:
     if not existing_dirs:
         log_error("No configured directories found on this system")
         sys.exit(1)
+    
+    # Check for duplicate directories (including symlinks) and deduplicate
+    existing_dirs = check_for_duplicate_directories(existing_dirs)
     
     # Check that we have at least one readable and one writable
     has_readable = any(mode in ("r", "rw") for _, mode in existing_dirs)
