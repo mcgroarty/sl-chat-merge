@@ -33,6 +33,12 @@ EXCLUDED_FILES = [
     "typed_locations.txt",
 ]
 
+# Directories to exclude (matched at start of relative path)
+EXCLUDED_DIRECTORIES = [
+    "logs/",
+    "user_settings/",
+]
+
 # Global flags
 VERBOSE = False
 DRY_RUN = False
@@ -153,7 +159,7 @@ def discover_files(directories: List[Tuple[Path, str]], filters: List[str]) -> S
     Discover all .txt files across readable directories.
     
     Scans user-specific subdirectories (e.g., UserName/*.txt) but excludes
-    the logs/ directory which contains debugging logs, not chat logs.
+    certain directories like logs/ and user_settings/.
     
     Args:
         directories: List of (path, mode) tuples for existing directories
@@ -178,9 +184,9 @@ def discover_files(directories: List[Tuple[Path, str]], filters: List[str]) -> S
                 relative = txt_file.relative_to(dir_path)
                 relative_str = str(relative).replace(os.sep, "/")  # Ensure forward slashes
                 
-                # Exclude files in the logs/ directory (debugging logs, not chat logs)
-                if relative_str.startswith("logs/"):
-                    log_verbose(f"Excluding (in logs/ directory): {relative_str}")
+                # Exclude files in excluded directories
+                if any(relative_str.startswith(excluded_dir) for excluded_dir in EXCLUDED_DIRECTORIES):
+                    log_verbose(f"Excluding (in excluded directory): {relative_str}")
                     continue
                 
                 # Apply exclusion filters
