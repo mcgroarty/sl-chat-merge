@@ -20,9 +20,9 @@ The tool consists of three main functions:
 
 ### Configuration
 
-The implementation includes a directory configuration list at the top that specifies:
+The implementation includes a directory configuration constant defined in the Python file that specifies:
 
-- **Directory paths** to synchronize
+- **Directory paths** to synchronize (must be absolute paths)
 - **Access modes** for each directory:
   - `r` (read-only): Source directory - files are read but never modified; no directories created
   - `w` (write-only): Destination directory - files are written/updated but never read as source
@@ -31,12 +31,20 @@ The implementation includes a directory configuration list at the top that speci
 **Example configuration structure:**
 
 ```python
-[
+DIRECTORIES = [
     {"path": "~/Library/Application Support/Firestorm/", "mode": "rw"},
     {"path": "~/Mega/Apps/SL-Logs-and-Settings/SL-Chat/", "mode": "rw"},
     {"path": "~/Library/Application Support/SecondLife/", "mode": "rw"},
 ]
 ```
+
+**Path Requirements**:
+- Paths should be absolute or use `~` for home directory
+- `~` is expanded to the user's home directory (works on Windows, macOS, and Linux)
+- Always use forward slash (`/`) as directory separator, even on Windows
+- Paths support space characters in file and directory names
+- No other environment variable expansion is supported
+- Relative paths are not supported
 
 **Validation**: The program terminates with an error if any directory entry is missing the `mode` field.
 
@@ -56,16 +64,15 @@ The tool supports the following command-line options:
   - Never actually writes files or creates directories
   - Useful for previewing sync operations before executing them
 
-Additional filtering can be provided as positional arguments to process only files matching specific patterns (case-insensitive match on file paths).
+Additional filtering can be provided as positional arguments to process only files matching specific patterns (case-insensitive substring match on file paths).
 
 ### Processing Flow
 
 #### Main Entry Point
 
-- Loads and validates the directory configuration
+- Loads and validates the directory configuration constant
 - Checks that all directory entries have a valid access mode (`r`, `w`, or `rw`)
 - Validates which configured directories actually exist on the file system
-- Detects the operating system (Windows or macOS)
 - For each unique chat log file found across all directories:
   1. Reads the file from all existing directories with `r` or `rw` access
   2. Merges all versions in memory using the sort function
@@ -99,28 +106,38 @@ For each unique chat log file across all configured directories:
 
 5. **File Processing**: For each unique chat log file:
    - Reads all versions of the file from directories where it exists (only from `r` or `rw` directories)
+   - Empty files are treated as having no chat content to merge
    - Concatenates all versions in memory (in order of directory configuration)
    - Passes combined content through the sort function to sort and deduplicate
+   - **Malformed Timestamp Handling**: If any file contains lines with malformed timestamps, stops immediately with a verbose error message and makes no changes (may indicate a new system file needing exclusion)
    - For each existing directory with `w` or `rw` access:
      - If file doesn't exist: writes the merged file (or reports in dry-run mode)
-     - If file exists: compares with merged result
+     - If file exists (including empty files): compares with merged result
        - Updates only if merged result differs (or reports in dry-run mode)
        - Reports "Updating [filename]..." when changes are made (or "Would update [filename]..." in dry-run mode)
        - Reports "Adding [filename]..." when creating new files (or "Would add [filename]..." in dry-run mode)
 
-6. **Optional Filtering**: Accepts command-line arguments to process only files matching specific patterns (case-insensitive match on file paths)
+6. **Optional Filtering**: Accepts command-line arguments to process only files matching specific patterns (case-insensitive substring match on file paths)
 
 #### Sort Function
 
-Processes chat log entries:1. **Line Ending Normalization**: Removes carriage returns to handle Windows line endings
+Processes chat log entries:
+
+1. **Line Ending Normalization**: Converts all line endings to Unix style (LF)
+   - Removes carriage returns to handle Windows line endings (CRLF → LF)
+   - Ensures consistent line endings regardless of source platform
 2. **Multi-line Joining**: Joins multi-line chat entries:
    - Lines starting with `[YYYY/MM/DD` (timestamp pattern) begin new entries
    - Lines NOT starting with timestamp are joined to the previous line
    - First line in file doesn't get a leading newline
-3. **Chronological Sorting**: Sorts entries by the timestamp field (characters 1-21: `[YYYY/MM/DD HH:MM:SS]` plus space)
-4. **Deduplication**: Removes duplicate lines
-5. **Trailing Newline**: Ensures output ends with a newline character
-6. **Locale Independence**: Uses byte-wise comparison for consistent sorting across different systems
+3. **Timestamp Validation**: Checks that all lines starting with `[` have valid timestamps
+   - If malformed timestamps are detected, raises an error and stops processing
+4. **Chronological Sorting**: Sorts entries by the timestamp field (characters 1-21: `[YYYY/MM/DD HH:MM:SS]` plus space)
+5. **Deduplication**: Removes consecutive duplicate lines (like Unix `uniq`)
+   - Only removes duplicates that appear immediately after each other in the sorted output
+   - Does not remove duplicates that appear elsewhere in the file
+6. **Trailing Newline**: Ensures output ends with a newline character
+7. **Locale Independence**: Uses byte-wise comparison for consistent sorting across different systems
 
 ### Chat Log Format
 
@@ -134,12 +151,14 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 
 **Important**: The timestamp format is exactly 20 characters: `[YYYY/MM/DD HH:MM:SS]` including the brackets. Sorting is performed on characters 1-21 of each line (timestamp plus the space after).
 
+**Line Endings**: All output files use Unix-style line endings (LF only, `\n`). Files with Windows line endings (CRLF, `\r\n`) are automatically converted during processing.
+
 ## Use Cases
 
 1. **Workstation Switching**: User logs into SL from home computer on Monday, from work computer on Tuesday - both machines end up with complete chat history
 2. **Backup and Recovery**: Central synchronized directory serves as backup of all conversations
 3. **Multi-Viewer Support**: Supports multiple SL-compatible viewers (official client, Firestorm, Kokua)
-4. **Cross-Platform**: Works on Windows and macOS
+4. **Cross-Platform**: Works on Windows and macOS (all files use Unix line endings)
 
 ## Technical Details
 
@@ -148,7 +167,14 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 - **In-Memory Processing**: All file lists, directory structures, and merged content are processed in memory
   - No temporary files are created or used
   - File lists and merge operations are held in memory during processing
-- **Path Handling**: Strips source/destination base path from file list to create relative paths for comparison
+- **Path Handling**:
+  - Paths can be absolute or use `~` for home directory (expanded to user's home directory on all platforms)
+  - Always use forward slash (`/`) as directory separator (works on all platforms including Windows)
+  - Supports space characters in file and directory names
+  - No other environment variable expansion supported
+  - Relative paths are not supported
+  - Strips base path from file list to create relative paths for comparison
+- **Line Endings**: Always writes Unix-style line endings (LF, `\n`) regardless of source file format
 - **Case Sensitivity**: Uses case-insensitive matching for `.txt` files and pattern filters
 - **Symbolic Links**: Follows symbolic links during directory traversal
 
@@ -157,6 +183,7 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 - **Directory Validation**: Requires `/logs` subdirectory in directories before processing (prevents accidental sync of wrong directories)
 - **Existence Check**: Only processes directories that actually exist on the file system
 - **Read-Only Protection**: Directories with `r` access mode are never modified - no files written, no directories created
+- **Malformed Timestamp Detection**: Stops immediately with verbose error if malformed timestamps are detected (may indicate new system files)
 - **Dry-Run Mode**: When enabled, performs all analysis and reports actions without making any file system modifications
 - **Change Detection**: Checks if files differ before writing
 - **Conservative Writes**: Only writes to destination when merged result actually differs from existing content
@@ -166,6 +193,7 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 
 - **Locale Independence**: Uses byte-wise comparison for consistent sorting across different systems and locales
 - **Sort Key**: Sorts on characters 1-21 of each line (the timestamp field)
+- **Deduplication**: Removes only consecutive duplicate lines after sorting (equivalent to Unix `uniq`)
 - **Stability**: Consistent sorting behavior regardless of system locale settings
 
 ## Implementation Requirements
@@ -176,10 +204,15 @@ Multi-line messages continue on subsequent lines without timestamps. The sort fu
 - **Testing Framework**: pytest for all unit and integration tests
 - **Test Organization**: Tests located in a `tests/` directory
 - **Command-Line Interface**: Argument parsing for `--help`, `--verbose`/`-v`, and `--dry-run`/`-n` options
+- **Configuration**: Directory configuration defined as a constant (`DIRECTORIES`) in the main Python file
+- **Path Expansion**: Implements `~` expansion for home directory on all platforms (Windows, macOS, Linux)
+- **Path Separators**: Uses forward slash (`/`) as directory separator on all platforms, including Windows
 - **Test Coverage**: Comprehensive test coverage for:
-  - Sort function (line endings, multi-line entries, timestamp parsing, deduplication)
-  - Merge function (file discovery, filtering, directory creation, file comparison, multi-source merging)
+  - Sort function (line endings, multi-line entries, timestamp parsing, timestamp validation, consecutive deduplication)
+  - Merge function (file discovery, filtering, directory creation, file comparison, multi-source merging, empty files)
   - Main entry point (directory existence checking, read-all-then-write-all logic, dry-run mode, verbose output)
-  - Edge cases (empty files, malformed timestamps, missing directories, special characters, non-existent directories)
+  - Edge cases (empty files, malformed timestamps, missing directories, special characters, non-existent directories, paths with spaces)
   - Command-line option handling
+  - Line ending conversion (CRLF to LF)
+  - Path handling (tilde expansion, forward slash separators on all platforms)
 
