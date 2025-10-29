@@ -33,7 +33,7 @@ EXCLUDED_FILES = [
     "avatar_icons_cache.txt",
     "cef_log.txt",
     "plugin_cookies.txt",
-    "render_mute_settings.txt"
+    "render_mute_settings.txt",
     "search_history.txt",
     "teleport_history.txt",
     "typed_locations.txt",
