@@ -1,2 +1,80 @@
-# sl-chat-sync
-Merge Second Life chat logs across multiple directories
+# Second Life Chat Log Merger
+
+Synchronize and merge Second Life chat logs across multiple workstations and viewers.
+
+## Overview
+
+This tool maintains complete, chronologically-sorted conversation history when using Second Life on different computers or switching between viewers (Firestorm, Kokua, official client). It reads chat logs from all configured locations, merges them by timestamp, and writes the unified result back to all writable directories.
+
+## Features
+
+- **Multi-source merging**: Combines chat logs from all readable directories in a single pass
+- **Bidirectional sync**: Keeps multiple viewer installations and cloud backup locations synchronized
+- **Smart filtering**: Excludes system files and cloud sync conflicts automatically
+- **Read-only protection**: Safely read from backup locations without modification
+- **Dry-run mode**: Preview changes before executing
+- **Cross-platform**: Works on Windows and macOS
+
+## Usage
+
+```bash
+python sl-chatmerge.py [OPTIONS] [FILTERS...]
+```
+
+### Options
+
+- `--help` - Display usage information and configuration format
+- `--verbose`, `-v` - Enable detailed output showing all operations
+- `--dry-run`, `-n` - Show what would be changed without modifying files
+
+### Optional Filters
+
+Provide pattern(s) as additional arguments to process only matching files:
+
+```bash
+python sl-chatmerge.py "Jane Doe"           # Only process Jane Doe's chat logs
+python sl-chatmerge.py --dry-run "Group"    # Preview changes to group chat logs
+```
+
+## Configuration
+
+Edit the directory configuration at the top of `sl-chatmerge.py`:
+
+```python
+DIRECTORIES = [
+    {"path": "~/Library/Application Support/Firestorm/", "mode": "rw"},
+    {"path": "~/Mega/Apps/SL-Logs-and-Settings/SL-Chat/", "mode": "rw"},
+    {"path": "~/Library/Application Support/SecondLife/", "mode": "rw"},
+]
+```
+
+### Access Modes
+
+- `r` - Read-only: Files are read but never modified
+- `w` - Write-only: Files are written but not read as source
+- `rw` - Read-write: Files are both read and written (bidirectional sync)
+
+## How It Works
+
+1. Validates that configured directories exist and contain a `/logs` subdirectory
+2. Scans all readable (`r` or `rw`) directories for `.txt` chat log files
+3. For each unique chat log file:
+   - Reads all versions from readable directories
+   - Merges and sorts by timestamp
+   - Removes duplicate entries
+   - Writes to all writable (`w` or `rw`) directories if content differs
+
+## Requirements
+
+- Python 3.8+
+- No external dependencies
+
+## Testing
+
+```bash
+pytest tests/
+```
+
+## License
+
+See LICENSE file for details.
