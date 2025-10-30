@@ -4,11 +4,17 @@ Synchronize and merge Second Life chat logs across multiple workstations and vie
 
 ## ⚠️ Important Notice
 
-This program is provided **as-is** and is intended for Second Life users, but is **not offered by Linden Lab**.
+This program is provided **as-is** and is intended for Second Life users, but is **not offered by Linden Lab**. It was written to address a personal need, and is not a comprehensive tool that may be appropriate for all users or all viewers.
 
 **Before using this tool, you are strongly encouraged to make backups of your viewer logs.** While this tool has been designed with safety in mind, you should always have backups of important data.
 
 If you encounter any issues or have questions, please file them at: <https://github.com/mcgroarty/sl-chat-merge/issues>
+
+### Timestamp Requirements
+
+**⚠️ Users are discouraged from using this tool if stable message ordering is required but seconds are not enabled in their viewer's chat timestamp settings.**
+
+**Without seconds enabled:** Chat messages that occur within the same minute will not maintain chronological order. If preserving exact historical conversation flow is important to you, do not use this tool if seconds were not enabled in your viewer preferences.
 
 ## Overview
 
