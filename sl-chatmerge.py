@@ -284,7 +284,7 @@ def sort_chat_log(content: str, file_path: str) -> str:
     content = content.replace('\r\n', '\n').replace('\r', '\n')
     
     if not content:
-        return '\n'  # Empty file gets single newline
+        return ''  # Empty file stays empty
     
     lines = content.split('\n')
     
