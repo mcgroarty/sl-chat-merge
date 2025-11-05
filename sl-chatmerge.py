@@ -289,11 +289,16 @@ def sort_chat_log(content: str, file_path: str) -> str:
     lines = content.split('\n')
     
     # Step 2: Join multi-line entries
-    # Pattern for timestamp: [YYYY/MM/DD HH:MM:SS] or [YYYY/MM/DD HH:MM] or [YYYY/MM/DD HH:MM AM/PM]
+    # Pattern for timestamp: 
+    #   [YYYY/MM/DD HH:MM:SS] or [YYYY/MM/DD HH:MM] or [YYYY/MM/DD HH:MM AM/PM] (standard format)
+    #   YYYY/MM/DD HH:MM (old format without brackets)
     # Standard format: 20 chars (with seconds), Short format: 17-19 chars (without seconds)
     # 12-hour format: 20-22 chars (with AM/PM)
     # Hours and minutes can be 1-2 digits
-    timestamp_pattern = re.compile(r'^\[\d{4}/\d{2}/\d{2} \d{1,2}:\d{1,2}(:\d{2})?( [AP]M)?\]')
+    # Old format: Missing brackets, e.g., "2009/06/03 10:12Mykel String:"
+    timestamp_pattern = re.compile(
+        r'^(?:\[?\d{4}/\d{2}/\d{2} \d{1,2}:\d{1,2}(?::\d{2})?(?:\]| [AP]M\])?)'
+    )
     
     entries: List[str] = []
     current_entry: List[str] = []
@@ -316,9 +321,10 @@ def sort_chat_log(content: str, file_path: str) -> str:
         entries.append('\n'.join(current_entry))
     
     # Step 3: Validate and normalize timestamps
-    # Pattern to extract timestamp components for normalization (including optional AM/PM)
+    # Pattern to extract timestamp components for normalization (including optional brackets and AM/PM)
+    # Supports both [YYYY/MM/DD HH:MM] and YYYY/MM/DD HH:MM (old format without brackets)
     timestamp_parse = re.compile(
-        r'^\[(\d{4})/(\d{2})/(\d{2}) (\d{1,2}):(\d{1,2})(?::(\d{2}))?( [AP]M)?\]'
+        r'^\[?(\d{4})/(\d{2})/(\d{2}) (\d{1,2}):(\d{1,2})(?::(\d{2}))?(?:\]|( [AP]M)\]?)?'
     )
     
     normalized_entries: List[str] = []
@@ -326,13 +332,14 @@ def sort_chat_log(content: str, file_path: str) -> str:
         lines_in_entry = entry.split('\n')
         first_line = lines_in_entry[0]
         
-        if first_line.startswith('['):
+        # Check if line starts with a timestamp (with or without bracket)
+        if first_line[0:1].isdigit() or first_line.startswith('['):
             match = timestamp_parse.match(first_line)
             if not match:
                 raise ValueError(
                     f"Malformed timestamp in {file_path}:\n"
                     f"  Line: {first_line[:80]}\n"
-                    f"  Expected format: [YYYY/MM/DD HH:MM:SS] or [YYYY/MM/DD HH:MM] or [YYYY/MM/DD HH:MM AM/PM]"
+                    f"  Expected format: [YYYY/MM/DD HH:MM:SS], [YYYY/MM/DD HH:MM], [YYYY/MM/DD HH:MM AM/PM], or YYYY/MM/DD HH:MM (old format)"
                 )
             
             # Normalize timestamp: pad hours and minutes to 2 digits, convert AM/PM to 24-hour
